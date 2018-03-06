@@ -3,6 +3,7 @@ from graphene_django import DjangoObjectType
 
 from links.models import Link, Vote
 from users.schema import UserType
+from graphql import GraphQLError
 
 
 class LinkType(DjangoObjectType):
@@ -65,11 +66,13 @@ class CreateVote(graphene.mutation):
     def mutate(self, info, link_id):
         user = info.context.user
         if user.is_anonymous:
+            # standard Py errorhandling
             raise Exception('You must be logged in to vote!')
         
         link = Link.objects.filter(id-link_id).first()
         if not link:
-            raise Exception('Invalid Link!')
+            # handling errors via GraphQLError -- graphql is strongly typed and can determine incorrec values immediately
+            raise GraphQLError('Invalid Link!')
 
         Vote.objects.create(
             user=user,
