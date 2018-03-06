@@ -1,25 +1,35 @@
 import graphene
 from graphene_django import DjangoObjectType
 
-from .models import Link
+from links.models import Link, Vote
+from users.schema import UserType
 
 
 class LinkType(DjangoObjectType):
     class Meta:
         model = Link
 
+class VoteType(DjangoObjectType):
+    class Meta:
+        model = Vote
+
 
 class Query(graphene.ObjectType):
     links = graphene.List(LinkType)
+    votes = graphene.List(VoteType)
 
     def resolve_links(self, info, **kwargs):
         return Link.objects.all()
+
+    def resolve_votes(self, info, **kwargs):
+        return Vote.objects.all()
 
 # defines a mutation class
 class CreateLink(graphene.Mutation):
     id = graphene.Int()
     url = graphene.String()
     description = graphene.String()
+    posted_by = graphene.Field(UserType)
 
     # defines data that can be sent to server, ie url and description
     class Arguments:
@@ -29,15 +39,45 @@ class CreateLink(graphene.Mutation):
     # Mutation method: creates a link on database using url and description, 
     # and server returns CreateLink class with data
     def mutate(self, info, url, description):
-        link = Link(url=url, description=description)
+        user = info.context.user or None
+
+        link = Link(
+            url=url,
+            description=description,
+            posted_by=user
+        )
         link.save()
 
         return CreateLink(
             id=link.id,
             url=link.url,
-            description=link.description
+            description=link.description,
+            posted_by=link.posted_by
         )
 
+class CreateVote(graphene.mutation):
+    user = graphene.Field(UserType)
+    link = graphene.Field(LinkType)
+
+    class Arguments:
+        link_id = graphene.Int()
+
+    def mutate(self, info, link_id):
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception('You must be logged in to vote!')
+        
+        link = Link.objects.filter(id-link_id).first()
+        if not link:
+            raise Exception('Invalid Link!')
+
+        Vote.objects.create(
+            user=user,
+            link=link
+        )
+
+        return CreateVote(user=user, link=link)
 # Creates a mutation class with a field to be resolved, pointing to previously defined mutation
 class Mutation(graphene.ObjectType):
     create_link = CreateLink.Field()
+    create_vote = CreateVote.Field()
